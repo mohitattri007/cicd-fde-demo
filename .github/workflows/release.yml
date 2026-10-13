@@ -26,9 +26,10 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
       - name: Run tests
-        run: pytest -q
+        working-directory: .
+        run: python -m pytest -q
       - name: Set image name and immutable tag
         id: image
         shell: bash
