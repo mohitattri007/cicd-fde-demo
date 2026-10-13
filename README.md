@@ -208,3 +208,5 @@ kubectl rollout history deployment/support-agent-api -n <namespace>
 ## 10. Limitations / production hardening
 
 This is an interview demo, not a complete production platform. Before production, add action SHA pinning, SBOM and provenance, image signing/verification, automated vulnerability policy, environment approvals, resource/security contexts, liveness/startup probes, monitoring/alerting, rate-limited progressive delivery if needed, and backward-compatible database migration procedures. The sample smoke test runs against a supplied URL; wire it into your deployment process only after the environment and network access are configured.
+
+GitOps deployment update test.
