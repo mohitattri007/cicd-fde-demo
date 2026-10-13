@@ -1,0 +1,95 @@
+name: Release and update GitOps config
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  release:
+    name: Test and publish image
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      tag: ${{ steps.image.outputs.tag }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Run tests
+        run: pytest -q
+      - name: Set image name and immutable tag
+        id: image
+        shell: bash
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "tag=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push SHA-tagged image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.image.outputs.image }}:${{ steps.image.outputs.tag }}
+
+  update-gitops-config:
+    name: Update deployment repository
+    needs: release
+    runs-on: ubuntu-latest
+    # Configure DEPLOY_REPO, DEPLOY_FILE, DEPLOY_BRANCH variables and DEPLOY_TOKEN secret.
+    # If these are not configured, this job is skipped while CI/image publishing still succeed.
+    if: ${{ vars.DEPLOY_REPO != '' && vars.DEPLOY_FILE != '' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout app repository (script only)
+        uses: actions/checkout@v4
+      - name: Checkout deployment-config repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.DEPLOY_REPO }}
+          ref: ${{ vars.DEPLOY_BRANCH || 'main' }}
+          token: ${{ secrets.DEPLOY_TOKEN }}
+          path: deploy-config
+      - name: Update image reference
+        env:
+          DEPLOY_FILE: ${{ vars.DEPLOY_FILE }}
+          IMAGE: ${{ needs.release.outputs.image }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: python scripts/update_image.py "deploy-config/${DEPLOY_FILE}" "${IMAGE}:${TAG}"
+      - name: Commit and push deployment config
+        working-directory: deploy-config
+        env:
+          IMAGE: ${{ needs.release.outputs.image }}
+          TAG: ${{ needs.release.outputs.tag }}
+          APP_REPO: ${{ github.repository }}
+          APP_SHA: ${{ github.sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${{ vars.DEPLOY_FILE }}"
+          if git diff --cached --quiet; then
+            echo "No deployment config change detected."
+            exit 0
+          fi
+          git commit -m "Deploy ${APP_REPO}@${APP_SHA:0:7} (${TAG:0:12})"
+          git push

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: support-agent-api
+  labels:
+    app: support-agent-api
+spec:
+  type: ClusterIP
+  selector:
+    app: support-agent-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
