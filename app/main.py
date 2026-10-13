@@ -14,6 +14,7 @@ def root():
 def health():
     return {"status": "ok"}
 
+# Just testing it to test CI/CD pipeline
 
 @app.get("/version")
 def version():
